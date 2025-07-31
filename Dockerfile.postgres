@@ -1,0 +1,11 @@
+FROM postgres:15-alpine
+
+# Copy initialization script
+COPY scripts/init.sql /docker-entrypoint-initdb.d/
+
+# Set default environment variables
+ENV POSTGRES_DB=spacex_launches
+ENV POSTGRES_USER=spacex_user
+
+# Expose port
+EXPOSE 5432

@@ -1,0 +1,137 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: spacex-postgres
+    env: docker
+    dockerfilePath: ./Dockerfile.postgres
+    disk:
+      name: postgres-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 1
+    envVars:
+      - key: POSTGRES_DB
+        value: spacex_launches
+      - key: POSTGRES_USER
+        value: spacex_user
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+
+  # Redis Cache
+  - type: redis
+    name: spacex-redis
+    ipAllowList: []
+    plan: free
+
+  # Backend API
+  - type: web
+    name: spacex-backend
+    env: docker
+    dockerfilePath: ./Dockerfile.backend
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: spacex-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: API_CORS_ORIGINS
+        value: https://spacex-launch-tracker.onrender.com
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+
+  # Celery Worker
+  - type: worker
+    name: spacex-celery-worker
+    env: docker
+    dockerfilePath: ./Dockerfile.backend
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: spacex-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: celery -A src.celery_app worker --loglevel=info
+
+  # Celery Beat Scheduler
+  - type: worker
+    name: spacex-celery-beat
+    env: docker
+    dockerfilePath: ./Dockerfile.backend
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: spacex-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: spacex-redis
+          property: connectionString
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: celery -A src.celery_app beat --loglevel=info
+
+  # Frontend
+  - type: web
+    name: spacex-frontend
+    env: docker
+    dockerfilePath: ./Dockerfile.frontend
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://spacex-backend.onrender.com
+    buildCommand: cd frontend && npm ci && npm run build
+    startCommand: cd frontend && npm start
+
+databases:
+  - name: spacex-postgres
+    databaseName: spacex_launches
+    user: spacex_user
