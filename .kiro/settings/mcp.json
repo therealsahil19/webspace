@@ -1,0 +1,202 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "."
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_filesystem_read_file",
+        "mcp_filesystem_list_directory",
+        "mcp_filesystem_write_file",
+        "mcp_filesystem_create_directory",
+        "mcp_filesystem_edit_file",
+        "mcp_filesystem_search_files",
+        "mcp_filesystem_get_file_info",
+        "mcp_filesystem_directory_tree",
+        "mcp_filesystem_move_file",
+        "mcp_filesystem_read_multiple_files",
+        "mcp_filesystem_list_directory_with_sizes",
+        "mcp_filesystem_list_allowed_directories"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "GITHUB_TOKEN": "<put-your-token-here>"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_github_search_repositories",
+        "mcp_github_get_file_contents",
+        "mcp_github_list_issues",
+        "mcp_github_create_repository",
+        "mcp_github_push_files",
+        "mcp_github_create_branch",
+        "mcp_github_list_commits",
+        "mcp_github_get_issue",
+        "mcp_github_create_issue",
+        "mcp_github_fork_repository"
+      ]
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_puppeteer_puppeteer_navigate",
+        "mcp_puppeteer_puppeteer_screenshot",
+        "mcp_puppeteer_puppeteer_click",
+        "mcp_puppeteer_puppeteer_fill",
+        "mcp_puppeteer_puppeteer_select",
+        "mcp_puppeteer_puppeteer_hover",
+        "mcp_puppeteer_puppeteer_evaluate"
+      ]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "BRAVE_API_KEY": "<put-your-brave-api-key-here>"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_brave_search_brave_web_search",
+        "mcp_brave_search_brave_local_search",
+        "brave_web_search"
+      ]
+    },
+    "time": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-time"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_time_get_current_time",
+        "mcp_time_convert_time"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "mcp_fetch_fetch",
+        "fetch"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "playwright_navigate",
+        "playwright_screenshot",
+        "playwright_click",
+        "playwright_fill",
+        "playwright_select",
+        "playwright_hover",
+        "playwright_evaluate"
+      ]
+    },
+    "desktopCommander": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@wonderwhy-er/desktop-commander"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "execute_command",
+        "read_file",
+        "write_file",
+        "list_directory",
+        "create_directory"
+      ]
+    },
+    "kgMemory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-knowledge-graph"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "store_memory",
+        "retrieve_memory",
+        "search_memory",
+        "delete_memory"
+      ]
+    },
+    "python": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-python"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "python_execute",
+        "python_install_package",
+        "python_list_packages"
+      ]
+    },
+    "sentry": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.sentry.dev/mcp"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

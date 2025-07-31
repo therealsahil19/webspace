@@ -1,0 +1,70 @@
+name: Validate CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'docker-compose*.yml'
+      - 'Dockerfile*'
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate Docker Compose files
+      run: |
+        # Validate staging compose file
+        docker-compose -f docker-compose.yml config
+        
+        # Validate production compose file
+        docker-compose -f docker-compose.prod.yml config
+    
+    - name: Validate Dockerfiles
+      run: |
+        # Check Dockerfile syntax
+        docker build --dry-run -f Dockerfile.backend .
+        docker build --dry-run -f Dockerfile.frontend .
+    
+    - name: Check required files exist
+      run: |
+        # Check deployment files
+        test -f scripts/deploy.py
+        test -f .env.example
+        test -f .env.production.example
+        test -f requirements.txt
+        
+        # Check documentation
+        test -f docs/deployment.md
+        test -f docs/github-secrets-setup.md
+        test -f docs/deployment-checklist.md
+        
+        echo "✅ All required files exist"
+    
+    - name: Validate environment templates
+      run: |
+        # Check that example files have required variables
+        grep -q "DATABASE_URL" .env.example
+        grep -q "REDIS_URL" .env.example
+        grep -q "JWT_SECRET_KEY" .env.example
+        
+        grep -q "DATABASE_URL" .env.production.example
+        grep -q "REDIS_URL" .env.production.example
+        grep -q "JWT_SECRET_KEY" .env.production.example
+        
+        echo "✅ Environment templates are valid"
+    
+    - name: Check smoke tests
+      run: |
+        # Verify smoke tests exist and are valid Python
+        python -m py_compile tests/smoke_tests/test_api_endpoints.py
+        
+        echo "✅ Smoke tests are valid"
+    
+    - name: Validate GitHub Actions workflow
+      uses: docker://rhymond/github-action-validate-yaml:latest
+      with:
+        file: .github/workflows/ci-cd.yml

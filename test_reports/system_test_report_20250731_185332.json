@@ -1,0 +1,93 @@
+{
+  "timestamp": "2025-07-31T18:53:38.089393",
+  "duration": 5.891150712966919,
+  "prerequisites": {
+    "python_environment": false,
+    "database_available": false,
+    "redis_available": false,
+    "api_server_running": false,
+    "docker_services": false
+  },
+  "test_suites": {
+    "System Integration Tests": {
+      "name": "System Integration Tests",
+      "file": "tests/test_system_integration.py",
+      "duration": 0.4208059310913086,
+      "return_code": 4,
+      "stdout": "",
+      "stderr": "ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n__main__.py: error: unrecognized arguments: --json-report --json-report-file=test_reports/system_integration_tests_report.json\n  inifile: None\n  rootdir: E:\\spaceX\n\n",
+      "success": false,
+      "tests_run": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_skipped": 0
+    },
+    "System Validation Tests": {
+      "name": "System Validation Tests",
+      "file": "tests/test_system_validation.py",
+      "duration": 0.38340115547180176,
+      "return_code": 4,
+      "stdout": "",
+      "stderr": "ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n__main__.py: error: unrecognized arguments: --json-report --json-report-file=test_reports/system_validation_tests_report.json\n  inifile: None\n  rootdir: E:\\spaceX\n\n",
+      "success": false,
+      "tests_run": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_skipped": 0
+    },
+    "End-to-End Tests": {
+      "name": "End-to-End Tests",
+      "file": "tests/test_end_to_end.py",
+      "duration": 0.37873101234436035,
+      "return_code": 4,
+      "stdout": "",
+      "stderr": "ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n__main__.py: error: unrecognized arguments: --json-report --json-report-file=test_reports/end-to-end_tests_report.json\n  inifile: None\n  rootdir: E:\\spaceX\n\n",
+      "success": false,
+      "tests_run": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_skipped": 0
+    },
+    "Performance Tests": {
+      "name": "Performance Tests",
+      "file": "tests/test_performance.py",
+      "duration": 0.37935400009155273,
+      "return_code": 4,
+      "stdout": "",
+      "stderr": "ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n__main__.py: error: unrecognized arguments: --json-report --json-report-file=test_reports/performance_tests_report.json\n  inifile: None\n  rootdir: E:\\spaceX\n\n",
+      "success": false,
+      "tests_run": 0,
+      "tests_passed": 0,
+      "tests_failed": 0,
+      "tests_skipped": 0
+    }
+  },
+  "summary": {
+    "total_suites": 4,
+    "successful_suites": 0,
+    "failed_suites": 4,
+    "suite_success_rate": 0.0,
+    "total_tests": 0,
+    "total_passed": 0,
+    "total_failed": 0,
+    "total_skipped": 0,
+    "test_success_rate": 0
+  },
+  "benchmarks": {
+    "api_response_time": {
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/launches?limit=10 (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020B4A189D10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))",
+      "success": false,
+      "meets_requirement": false
+    },
+    "database_query": {
+      "error": "No module named 'src'",
+      "success": false,
+      "meets_requirement": false
+    },
+    "cache_performance": {
+      "error": "No module named 'src'",
+      "success": false,
+      "meets_requirement": false
+    }
+  }
+}

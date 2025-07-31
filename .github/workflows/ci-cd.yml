@@ -1,0 +1,425 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install chromium
+        
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+      run: |
+        alembic upgrade head
+        
+    - name: Run backend tests
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379/0
+        CELERY_BROKER_URL: redis://localhost:6379/0
+        CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        JWT_SECRET_KEY: test_secret_key_for_ci
+        ADMIN_USERNAME: test_admin
+        ADMIN_PASSWORD: test_password
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Run frontend linting
+      working-directory: ./frontend
+      run: npm run lint
+      
+    - name: Run frontend tests
+      working-directory: ./frontend
+      run: npm run test -- --coverage --watchAll=false
+      
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+  security-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Bandit security linter
+      run: |
+        pip install bandit
+        bandit -r src/ -f json -o bandit-report.json || true
+        
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-scan-results
+        path: |
+          trivy-results.sarif
+          bandit-report.json
+
+  build-and-push:
+    needs: [test-backend, test-frontend, security-scan]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata for backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Extract metadata for frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.backend
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.frontend
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Deploy to staging server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_PORT || 22 }}
+        script: |
+          # Navigate to application directory
+          cd /opt/spacex-launch-tracker
+          
+          # Pull latest images
+          docker-compose -f docker-compose.yml pull
+          
+          # Update environment variables
+          echo "DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}" > .env
+          echo "REDIS_URL=${{ secrets.STAGING_REDIS_URL }}" >> .env
+          echo "CELERY_BROKER_URL=${{ secrets.STAGING_REDIS_URL }}" >> .env
+          echo "CELERY_RESULT_BACKEND=${{ secrets.STAGING_REDIS_URL }}" >> .env
+          echo "JWT_SECRET_KEY=${{ secrets.STAGING_JWT_SECRET }}" >> .env
+          echo "ADMIN_USERNAME=${{ secrets.STAGING_ADMIN_USERNAME }}" >> .env
+          echo "ADMIN_PASSWORD=${{ secrets.STAGING_ADMIN_PASSWORD }}" >> .env
+          echo "ENVIRONMENT=staging" >> .env
+          
+          # Run database migrations
+          docker-compose run --rm backend alembic upgrade head
+          
+          # Deploy with zero downtime
+          docker-compose up -d --remove-orphans
+          
+          # Health check
+          sleep 30
+          curl -f http://localhost:8000/health || exit 1
+          
+          # Clean up old images
+          docker image prune -f
+    
+    - name: Notify deployment status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        
+  deploy-production:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create deployment backup
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        port: ${{ secrets.PRODUCTION_PORT || 22 }}
+        script: |
+          # Create backup of current deployment
+          cd /opt/spacex-launch-tracker
+          
+          # Backup database
+          docker-compose exec -T postgres pg_dump -U ${{ secrets.PRODUCTION_DB_USER }} spacex_tracker > backup_$(date +%Y%m%d_%H%M%S).sql
+          
+          # Keep only last 5 backups
+          ls -t backup_*.sql | tail -n +6 | xargs -r rm
+    
+    - name: Deploy to production server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        port: ${{ secrets.PRODUCTION_PORT || 22 }}
+        script: |
+          # Navigate to application directory
+          cd /opt/spacex-launch-tracker
+          
+          # Pull latest images
+          docker-compose -f docker-compose.prod.yml pull
+          
+          # Update environment variables
+          echo "DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }}" > .env.production
+          echo "REDIS_URL=${{ secrets.PRODUCTION_REDIS_URL }}" >> .env.production
+          echo "CELERY_BROKER_URL=${{ secrets.PRODUCTION_REDIS_URL }}" >> .env.production
+          echo "CELERY_RESULT_BACKEND=${{ secrets.PRODUCTION_REDIS_URL }}" >> .env.production
+          echo "JWT_SECRET_KEY=${{ secrets.PRODUCTION_JWT_SECRET }}" >> .env.production
+          echo "ADMIN_USERNAME=${{ secrets.PRODUCTION_ADMIN_USERNAME }}" >> .env.production
+          echo "ADMIN_PASSWORD=${{ secrets.PRODUCTION_ADMIN_PASSWORD }}" >> .env.production
+          echo "ENVIRONMENT=production" >> .env.production
+          echo "ALLOWED_HOSTS=${{ secrets.PRODUCTION_ALLOWED_HOSTS }}" >> .env.production
+          
+          # Run database migrations with safety checks
+          docker-compose -f docker-compose.prod.yml run --rm backend python scripts/deploy.py production --health-check
+          docker-compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
+          
+          # Deploy with zero downtime using rolling update
+          docker-compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate
+          
+          # Wait for services to be ready
+          sleep 60
+          
+          # Comprehensive health checks
+          curl -f https://${{ secrets.PRODUCTION_DOMAIN }}/health || exit 1
+          curl -f https://${{ secrets.PRODUCTION_DOMAIN }}/health/database || exit 1
+          curl -f https://${{ secrets.PRODUCTION_DOMAIN }}/health/redis || exit 1
+          curl -f https://${{ secrets.PRODUCTION_DOMAIN }}/health/celery || exit 1
+          
+          # Clean up old images and containers
+          docker image prune -f
+          docker container prune -f
+    
+    - name: Run post-deployment tests
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        port: ${{ secrets.PRODUCTION_PORT || 22 }}
+        script: |
+          cd /opt/spacex-launch-tracker
+          
+          # Run smoke tests
+          docker-compose -f docker-compose.prod.yml exec -T backend python -m pytest tests/smoke_tests/ -v
+          
+          # Test API endpoints
+          curl -f https://${{ secrets.PRODUCTION_DOMAIN }}/api/launches?limit=1
+          
+          # Test admin functionality
+          curl -f -X POST https://${{ secrets.PRODUCTION_DOMAIN }}/api/admin/health \
+            -H "Authorization: Bearer ${{ secrets.PRODUCTION_ADMIN_TOKEN }}"
+    
+    - name: Notify deployment success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        text: '🚀 Production deployment successful! SpaceX Launch Tracker is live.'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+    
+    - name: Notify deployment failure and rollback
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        text: '❌ Production deployment failed! Initiating rollback...'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+    
+    - name: Rollback on failure
+      if: failure()
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        port: ${{ secrets.PRODUCTION_PORT || 22 }}
+        script: |
+          cd /opt/spacex-launch-tracker
+          
+          # Rollback to previous version
+          docker-compose -f docker-compose.prod.yml down
+          
+          # Restore from backup if needed
+          # docker-compose exec -T postgres psql -U ${{ secrets.PRODUCTION_DB_USER }} -d spacex_tracker < backup_latest.sql
+          
+          # Start previous version
+          docker-compose -f docker-compose.prod.yml up -d
+          
+          echo "Rollback completed"
